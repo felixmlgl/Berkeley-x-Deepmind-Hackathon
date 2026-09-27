@@ -15,6 +15,12 @@ import {
   PersonInfo,
   PersonTrack,
 } from '../types/schema';
+import {
+  DEMO_SCENARIOS,
+  getDemoDetectionsAtTime,
+  getDemoPersonTrack,
+  isDemoScenario,
+} from './demoData';
 
 export interface TrackingProvider {
   name: string;
@@ -166,9 +172,40 @@ export class MediaPipeTrackingProvider implements TrackingProvider {
 }
 
 /**
+ * DemoDataTrackingProvider
+ * Replays the vision pipeline output in demo-data/ (real boxes, skeletons and rep times).
+ * Falls back to the mock provider for the built-in mock scenarios.
+ */
+export class DemoDataTrackingProvider implements TrackingProvider {
+  public name = 'Recorded Vision Pipeline Output';
+  public isMock = false;
+  private mock = new MockTrackingProvider();
+
+  public getAvailablePersons(scenarioId: string): PersonInfo[] {
+    const scenario = DEMO_SCENARIOS.find((s) => s.id === scenarioId);
+    return scenario ? scenario.persons : this.mock.getAvailablePersons(scenarioId);
+  }
+
+  public getDetectionsAtTime(scenarioId: string, timestamp: number): DetectionSnapshot[] {
+    return isDemoScenario(scenarioId)
+      ? getDemoDetectionsAtTime(scenarioId, timestamp)
+      : this.mock.getDetectionsAtTime(scenarioId, timestamp);
+  }
+
+  public getPersonTrack(scenarioId: string, personId: string): PersonTrack | undefined {
+    return isDemoScenario(scenarioId)
+      ? getDemoPersonTrack(scenarioId, personId)
+      : this.mock.getPersonTrack(scenarioId, personId);
+  }
+}
+
+/**
  * Factory to retrieve the active tracking provider based on configuration.
  */
 export function getTrackingProvider(): TrackingProvider {
+  if (CONFIG.USE_DEMO_DATA && DEMO_SCENARIOS.length > 0) {
+    return new DemoDataTrackingProvider();
+  }
   if (CONFIG.USE_MOCK_DATA) {
     return new MockTrackingProvider();
   }

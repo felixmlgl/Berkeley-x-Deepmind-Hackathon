@@ -4,6 +4,10 @@
  */
 
 export const CONFIG = {
+  // When true, the replay shows the recorded clips in videosCorrect/ with the vision pipeline output
+  // from demo-data/ (real skeletons and rep counts). Takes precedence over USE_MOCK_DATA.
+  USE_DEMO_DATA: true,
+
   // Master flag: when true, uses pre-recorded mock tracks & timelines.
   // When false, mounts real browser/edge MediaPipe Pose Landmarker.
   USE_MOCK_DATA: true,

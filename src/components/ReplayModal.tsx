@@ -2,12 +2,14 @@ import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { Play, Pause, RotateCcw, X, Check, ArrowLeft } from 'lucide-react';
 import {
   DetectionSnapshot,
+  ExerciseSession,
   PersonInfo,
   PoseSkeleton,
   ScenarioMetadata,
   WorkoutSummary as WorkoutSummaryType,
 } from '../types/schema';
 import { videoSourceService } from '../services/videoSource';
+import { summaryService } from '../services/summary';
 
 interface ReplayModalProps {
   isOpen: boolean;
@@ -18,6 +20,8 @@ interface ReplayModalProps {
   selectedPersonId: string;
   onSelectPerson: (id: string) => void;
   detections: DetectionSnapshot[];
+  sessions: ExerciseSession[]; // all counted sets in the current scenario
+  videoRef: React.MutableRefObject<HTMLVideoElement | null>;
   currentTime: number;
   duration: number;
   isPlaying: boolean;
@@ -38,6 +42,8 @@ export const ReplayModal: React.FC<ReplayModalProps> = ({
   selectedPersonId,
   onSelectPerson,
   detections,
+  sessions,
+  videoRef,
   currentTime,
   duration,
   isPlaying,
@@ -50,8 +56,40 @@ export const ReplayModal: React.FC<ReplayModalProps> = ({
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const scenario = scenarios.find((s) => s.id === currentScenarioId) || scenarios[0];
-  const selectedDetection = detections.find((d) => d.person_id === selectedPersonId) || detections[0];
+  // Not falling back to detections[0]: in real clips the selected person can be out of frame
+  const selectedDetection = detections.find((d) => d.person_id === selectedPersonId);
   const selectedPerson = scenario.persons.find((p) => p.person_id === selectedPersonId) || scenario.persons[0];
+  const personSessions = sessions.filter((s) => s.person_id === selectedPersonId);
+  const repsSoFar = personSessions.reduce(
+    (n, s) => n + s.rep_timestamps.filter((ts) => ts <= currentTime).length,
+    0
+  );
+  const currentExerciseName =
+    selectedDetection?.exercise_name ?? selectedPerson?.current_exercise ?? 'No person selected';
+
+  // Real footage when the scenario has a playable clip, otherwise the simulated CCTV feed
+  const [videoFailed, setVideoFailed] = useState(false);
+  useEffect(() => setVideoFailed(false), [scenario.video_url]);
+  const showVideo = !!scenario.video_url && !videoFailed;
+  // Match the clip's aspect ratio so the overlay letterboxes exactly like the video, but draw at >= 1280px
+  // wide so labels and joints stay crisp on low-res clips
+  const hasSize = showVideo && !!scenario.width && !!scenario.height;
+  const overlayScale = hasSize ? Math.max(1, 1280 / scenario.width!) : 1;
+  const canvasW = hasSize ? Math.round(scenario.width! * overlayScale) : 1280;
+  const canvasH = hasSize ? Math.round(scenario.height! * overlayScale) : 720;
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || !showVideo) return;
+    video.playbackRate = playbackSpeed;
+    if (isPlaying) {
+      video.play().catch((err: DOMException) => {
+        // AbortError just means a pause() interrupted play(); only an unplayable file should fall back
+        if (err.name === 'NotSupportedError') setVideoFailed(true);
+      });
+    }
+    else video.pause();
+  }, [isPlaying, playbackSpeed, showVideo, scenario.id, isOpen, videoRef]);
 
   const [hasFinished, setHasFinished] = useState(false);
 
@@ -75,8 +113,10 @@ export const ReplayModal: React.FC<ReplayModalProps> = ({
 
     ctx.clearRect(0, 0, w, h);
 
-    // Render underlying gym simulation or background
-    videoSourceService.renderSimulatedCCTVFrame(ctx, w, h, scenario.id, currentTime);
+    // Real clips play in the <video> underneath; only mock scenarios need a painted background
+    if (!showVideo) {
+      videoSourceService.renderSimulatedCCTVFrame(ctx, w, h, scenario.id, currentTime);
+    }
 
     // Minimal overlay: thin white/green lines only
     detections.forEach((det) => {
@@ -94,7 +134,7 @@ export const ReplayModal: React.FC<ReplayModalProps> = ({
 
         // Minimal person tag
         ctx.fillStyle = 'rgba(29, 29, 31, 0.85)';
-        const tagText = `${det.exercise_name} &bull; ${det.current_reps} reps`;
+        const tagText = `${det.exercise_name} • ${det.current_reps} reps`;
         ctx.font = '500 12px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif';
         const tw = ctx.measureText(tagText).width;
         ctx.fillRect(bx, by - 22, tw + 14, 20);
@@ -151,7 +191,7 @@ export const ReplayModal: React.FC<ReplayModalProps> = ({
         });
       }
     });
-  }, [scenario, selectedPersonId, detections, currentTime]);
+  }, [scenario, selectedPersonId, detections, currentTime, showVideo]);
 
   useEffect(() => {
     let animId: number;
@@ -166,22 +206,18 @@ export const ReplayModal: React.FC<ReplayModalProps> = ({
   if (!isOpen) return null;
 
   const handleFinishAndApply = () => {
-    const summary: WorkoutSummaryType = {
-      person_id: selectedPersonId,
-      total_duration_s: Math.max(1, Math.round(currentTime)),
-      total_reps: selectedDetection?.current_reps || 8,
-      sessions: [
-        {
-          person_id: selectedPersonId,
-          exercise_id: selectedDetection?.exercise_id || 'exercise',
-          exercise_name: selectedDetection?.exercise_name || selectedPerson.current_exercise,
-          start_time: 0,
-          end_time: Math.max(1, Math.round(currentTime)),
-          rep_count: selectedDetection?.current_reps || 8,
-          rep_timestamps: [3.5, 6.4, 9.6, 12.8, 16.0, 19.3, 22.5, 25.8],
-        },
-      ],
-    };
+    // Only the reps watched so far count toward the summary
+    const watched = personSessions
+      .map((s) => {
+        const done = s.rep_timestamps.filter((ts) => ts <= currentTime);
+        return { ...s, rep_count: done.length, rep_timestamps: done };
+      })
+      .filter((s) => s.rep_count > 0);
+    const summary: WorkoutSummaryType = summaryService.aggregateSessions(
+      selectedPersonId,
+      watched,
+      Math.max(1, Math.round(currentTime))
+    );
     onApplySessionToSummary(summary);
     onClose();
   };
@@ -211,11 +247,26 @@ export const ReplayModal: React.FC<ReplayModalProps> = ({
 
         {/* Video Area (Dark background ONLY inside this video container) */}
         <div className="w-full aspect-video rounded-[24px] overflow-hidden bg-black relative shadow-lg">
+          {showVideo && (
+            <video
+              ref={videoRef}
+              key={scenario.id}
+              src={scenario.video_url}
+              muted
+              playsInline
+              preload="auto"
+              onError={() => setVideoFailed(true)}
+              onLoadedMetadata={(e) => {
+                e.currentTarget.currentTime = currentTime;
+              }}
+              className="absolute inset-0 w-full h-full object-contain"
+            />
+          )}
           <canvas
             ref={canvasRef}
-            width={1280}
-            height={720}
-            className="w-full h-full object-contain pointer-events-none select-none"
+            width={canvasW}
+            height={canvasH}
+            className="absolute inset-0 w-full h-full object-contain pointer-events-none select-none"
           />
 
           {/* Minimal Live Indicator inside video */}
@@ -249,14 +300,14 @@ export const ReplayModal: React.FC<ReplayModalProps> = ({
           {/* Big Number & Exercise */}
           <div className="flex items-baseline gap-4">
             <span className="text-6xl sm:text-7xl font-extrabold tracking-tight text-[#34C759]">
-              {selectedDetection?.current_reps ?? 0}
+              {repsSoFar}
             </span>
             <div>
               <p className="text-xs font-semibold text-[#6E6E73] uppercase tracking-wide">
                 Live reps counted
               </p>
               <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-[#1D1D1F]">
-                {selectedDetection?.exercise_name ?? selectedPerson.current_exercise}
+                {currentExerciseName}
               </h2>
             </div>
           </div>
