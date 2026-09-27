@@ -6,3 +6,12 @@ coverage/
 *.log
 .env*
 !.env.example
+
+# Python backend
+.venv/
+__pycache__/
+backend/out/
+backend/models/*.pt
+backend/models/*_ncnn_model/
+*.mov
+*.mp4
