@@ -1,0 +1,7 @@
+{
+  "name": "Repswell",
+  "description": "Repswell - Edge AI Gym Tracking & Automatic Workout Rep Counter from existing security camera feeds.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
+
