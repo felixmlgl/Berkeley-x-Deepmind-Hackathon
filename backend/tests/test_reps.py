@@ -48,6 +48,14 @@ def squat(ph):
     return d
 
 
+def dip(ph):
+    d = np.zeros((17, 2))
+    d[:, 1] += 0.25 * ph                          # whole body, feet included, lowers between the bars
+    d[[9, 10], 1] -= 0.25 * ph                    # hands stay on the bars
+    d[[7, 8], 0] += np.array([-0.06, 0.06]) * ph  # elbows flare back as they bend
+    return d
+
+
 def lateral_raise(ph):
     d = np.zeros((17, 2))
     for s, (e, w) in ((-1, (7, 9)), (1, (8, 10))):
@@ -205,6 +213,7 @@ SCENARIOS = [
     lambda: scenario("shoulder press x8", 2, 8, press, 3.0),
     lambda: scenario("squat x10", 3, 10, squat, 2.5),
     lambda: scenario("lateral raise x15", 4, 15, lateral_raise, 1.8),
+    lambda: scenario("dips x10 (feet move with reps)", 17, 10, dip, 3.0),
     lambda: scenario("curl x10, heavy jitter", 5, 10, curl, 2.2, noise=0.025),
     lambda: scenario("curl x10, small in frame (60px)", 6, 10, curl, 2.2, H=60, noise=0.02),
     lambda: scenario("press x8, 20% keypoint dropout", 7, 8, press, 3.0, dropout=0.2),
