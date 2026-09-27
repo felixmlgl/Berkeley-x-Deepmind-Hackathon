@@ -19,3 +19,6 @@ backend/models/*_ncnn_model/
 # Shared example videos and Raspberry Pi recordings
 !/videos/**/*.mov
 !/videos/**/*.mp4
+
+# README demo clips
+!/docs/media/*.mp4
