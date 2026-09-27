@@ -96,6 +96,8 @@ export interface ScenarioMetadata {
   location: string;   // e.g. "Powerlifting Area"
   video_url: string;  // path to mp4 or simulated
   duration_s: number;
+  width?: number;     // source video size in pixels (real clips only)
+  height?: number;
   persons: PersonInfo[];
   description: string;
 }

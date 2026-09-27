@@ -12,12 +12,17 @@ import { RecoveryTab } from './components/RecoveryTab';
 import { ProgressTab } from './components/ProgressTab';
 import { WorkoutsTab } from './components/WorkoutsTab';
 import { ReplayModal } from './components/ReplayModal';
-import { SCENARIOS } from './mocks/scenarios';
+import { MOCK_SESSIONS, SCENARIOS } from './mocks/scenarios';
 import { PAST_WORKOUTS } from './mocks/memberData';
 import { PastWorkout, ScenarioMetadata, TrainingPlan, WorkoutSummary } from './types/schema';
 import { getTrackingProvider } from './services/tracking';
 import { summaryService } from './services/summary';
 import { loadTrainingPlan, saveTrainingPlan } from './services/planService';
+import { DEMO_SCENARIOS, getDemoSessions, isDemoScenario, loadDemoOverlay } from './services/demoData';
+import { CONFIG } from './config';
+
+const INITIAL_SCENARIOS =
+  CONFIG.USE_DEMO_DATA && DEMO_SCENARIOS.length > 0 ? DEMO_SCENARIOS : SCENARIOS;
 
 export default function App() {
   const [currentTab, setCurrentTab] = useState<TabId>('today');
@@ -27,11 +32,16 @@ export default function App() {
   const [plan, setPlan] = useState<TrainingPlan>(() => loadTrainingPlan());
 
   // Scenarios and Tracking
-  const [scenarios] = useState<ScenarioMetadata[]>(SCENARIOS);
-  const [currentScenarioId, setCurrentScenarioId] = useState<string>(SCENARIOS[0].id);
+  const [scenarios] = useState<ScenarioMetadata[]>(INITIAL_SCENARIOS);
+  const [currentScenarioId, setCurrentScenarioId] = useState<string>(INITIAL_SCENARIOS[0].id);
   const [selectedPersonId, setSelectedPersonId] = useState<string>(
-    SCENARIOS[0].persons[0].person_id
+    INITIAL_SCENARIOS[0].persons[0]?.person_id ?? ''
   );
+
+  // Real clips: the <video> in the replay is the playback clock, so skeletons stay in sync with it
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  // Bumped when a scenario's skeleton overlay finishes loading, to redraw while paused
+  const [, setOverlayVersion] = useState(0);
 
   // Playback & simulation state
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
@@ -47,6 +57,20 @@ export default function App() {
 
   const trackingProvider = getTrackingProvider();
   const detections = trackingProvider.getDetectionsAtTime(scenario.id, currentTime);
+  const sessions = isDemoScenario(scenario.id)
+    ? getDemoSessions(scenario.id)
+    : MOCK_SESSIONS[scenario.id] ?? [];
+
+  useEffect(() => {
+    if (!isDemoScenario(currentScenarioId)) return;
+    let cancelled = false;
+    loadDemoOverlay(currentScenarioId).then(() => {
+      if (!cancelled) setOverlayVersion((v) => v + 1);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [currentScenarioId]);
 
   // Handle plan update
   const handleUpdatePlan = (updatedPlan: TrainingPlan) => {
@@ -58,7 +82,7 @@ export default function App() {
   const handleSelectScenario = (scenarioId: string) => {
     setCurrentScenarioId(scenarioId);
     const newScenario = scenarios.find((s) => s.id === scenarioId) || scenarios[0];
-    setSelectedPersonId(newScenario.persons[0].person_id);
+    setSelectedPersonId(newScenario.persons[0]?.person_id ?? '');
     setCurrentTime(0);
     setIsPlaying(false);
   };
@@ -72,9 +96,12 @@ export default function App() {
     const deltaSeconds = ((now - lastTimeRef.current) / 1000) * playbackSpeed;
     lastTimeRef.current = now;
 
+    const video = videoRef.current;
+    const videoClock = video && video.src && !video.error && video.readyState >= 2;
+
     setCurrentTime((prev) => {
-      const next = prev + deltaSeconds;
-      if (next >= duration) {
+      const next = videoClock ? video.currentTime : prev + deltaSeconds;
+      if (next >= duration || (videoClock && video.ended)) {
         setIsPlaying(false);
         return duration;
       }
@@ -104,11 +131,13 @@ export default function App() {
 
   const handleSeek = (time: number) => {
     setCurrentTime(time);
+    if (videoRef.current) videoRef.current.currentTime = time;
   };
 
   const handleReset = () => {
     setCurrentTime(0);
     setIsPlaying(false);
+    if (videoRef.current) videoRef.current.currentTime = 0;
   };
 
   // When session completes or user taps "View summary" in Replay View:
@@ -192,6 +221,8 @@ export default function App() {
         selectedPersonId={selectedPersonId}
         onSelectPerson={(pid) => setSelectedPersonId(pid)}
         detections={detections}
+        sessions={sessions}
+        videoRef={videoRef}
         currentTime={currentTime}
         duration={duration}
         isPlaying={isPlaying}
