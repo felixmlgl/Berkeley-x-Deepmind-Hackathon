@@ -15,3 +15,7 @@ backend/models/*.pt
 backend/models/*_ncnn_model/
 *.mov
 *.mp4
+
+# Shared example videos and Raspberry Pi recordings
+!/videos/**/*.mov
+!/videos/**/*.mp4
