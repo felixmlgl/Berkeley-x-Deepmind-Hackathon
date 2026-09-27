@@ -28,6 +28,7 @@ EXERCISES = {
     "rear_delt_fly":     {"rear_delts": 1.0, "upper_back": 0.5},
     "bicep_curl":        {"biceps": 1.0, "forearms": 0.4},
     "tricep_extension":  {"triceps": 1.0},
+    "dip":               {"triceps": 1.0, "chest": 0.7, "front_delts": 0.5},
     "lat_pulldown":      {"lats": 1.0, "biceps": 0.5, "rear_delts": 0.3, "upper_back": 0.4},
     "pull_up":           {"lats": 1.0, "biceps": 0.6, "upper_back": 0.5, "forearms": 0.3},
     "seated_row":        {"upper_back": 1.0, "lats": 0.7, "rear_delts": 0.4, "biceps": 0.4},

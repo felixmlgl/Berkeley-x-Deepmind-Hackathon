@@ -75,6 +75,10 @@ export const EXERCISE_MUSCLE_MAP: Record<string, ExerciseMuscleMapping> = {
     primary: ['triceps'],
     secondary: [],
   },
+  dip: {
+    primary: ['triceps', 'chest'],
+    secondary: ['front_delts'],
+  },
 
   // Arms & Pull
   'bicep-curl': {

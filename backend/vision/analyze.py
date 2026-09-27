@@ -48,6 +48,8 @@ class Params:
     min_periodicity: float = 0.4    # autocorrelation at the rep period; gestures/fidgeting score < 0.35
     min_joint_range: float = 0.10   # some joint must travel >= this many body heights (kills whole-body jiggle)
     max_base_motion: float = 0.12   # box bottom (feet) must stay put; moving = walking or a flaky occluded track
+    synced_base_corr: float = 0.8   # ...unless it moves in lockstep with the reps (dips, pull-ups: whole body travels)
+    max_synced_base_motion: float = 0.6
 
 
 @dataclass
@@ -358,8 +360,14 @@ def analyze_track(tr, p):
                     continue
                 r0, r1 = w0 + st[0], w0 + en[-1] + 1  # set window, index into raw / segment
                 joint_range = max(max(_p_range(raw[r0:r1, k, 0]), _p_range(raw[r0:r1, k, 1])) for k in used)
-                base_motion = _p_range(box[a + r0:a + r1, 3]) / H0
-                if joint_range < p.min_joint_range or base_motion > p.max_base_motion:
+                base = box[a + r0:a + r1, 3]
+                base_motion = _p_range(base) / H0
+                if base_motion > p.max_base_motion:
+                    ok = np.isfinite(base)
+                    sync = abs(np.corrcoef(base[ok], s[st[0]:en[-1] + 1][ok])[0, 1]) if ok.sum() > 5 else 0.0
+                    if sync < p.synced_base_corr or base_motion > p.max_synced_base_motion:
+                        continue
+                if joint_range < p.min_joint_range:
                     continue
                 off = a + w0  # index into tg
                 loading = np.linalg.norm(Vt[0].reshape(-1, 2), axis=1)
