@@ -1,6 +1,6 @@
 <div align="center">
 
-# Repswell ⚡️
+# Spottr
 
 ### Your gym already has cameras. Now they count your reps.
 
